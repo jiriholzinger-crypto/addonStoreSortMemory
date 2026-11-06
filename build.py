@@ -14,6 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ADDON = ROOT / "addon"
+# Line endings of these files are normalised, so a checkout on Windows builds the same file.
+TEXT_SUFFIXES = {".py", ".ini", ".po", ".html", ".txt", ".md"}
 
 
 def parsePo(path):
@@ -120,10 +122,15 @@ def main():
 	manifest = (ADDON / "manifest.ini").read_text(encoding="utf-8")
 	version = re.search(r"^version\s*=\s*(\S+)", manifest, re.M).group(1)
 	target = ROOT / f"addonStoreSortMemory-{version}.nvda-addon"
+	# Fixed timestamps and order make the build reproducible: building the same sources
+	# again gives a byte-identical file with the same SHA-256 checksum.
 	with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
 		for f in sorted(ADDON.rglob("*")):
 			if f.is_file() and "__pycache__" not in f.parts and f.suffix != ".pyc":
-				z.write(f, f.relative_to(ADDON).as_posix())
+				info = zipfile.ZipInfo(f.relative_to(ADDON).as_posix(), date_time=(2020, 1, 1, 0, 0, 0))
+				info.compress_type = zipfile.ZIP_DEFLATED
+				info.external_attr = 0o644 << 16
+				z.writestr(info, f.read_bytes().replace(b"\r\n", b"\n") if f.suffix in TEXT_SUFFIXES else f.read_bytes())
 	print("Built", target.name)
 
 
