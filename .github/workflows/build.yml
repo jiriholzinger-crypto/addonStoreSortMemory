@@ -99,11 +99,16 @@ jobs:
             "$SHA256" > notes.md
 
           if gh release view "$tag" > /dev/null 2>&1; then
-            # The release exists already (made on the website): attach the file to it.
-            if gh release upload "$tag" "$FILE" --clobber; then
+            # Never replace a published file: the NVDA Add-on Store stores its SHA-256 checksum,
+            # and a different file would fail with a checksum error for every user.
+            if gh release view "$tag" --json assets --jq '.assets[].name' | grep -qxF "$FILE"; then
+              echo "::error::Release $tag already contains $FILE. It is not replaced, because the Add-on Store checks its checksum. To publish changes, increase 'version' in addon/manifest.ini and run the release again."
+              exit 1
+            fi
+            if gh release upload "$tag" "$FILE"; then
               echo "Attached $FILE to the existing release $tag." >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "::error::Could not attach $FILE to the existing release $tag (see the message above). If the repository uses immutable releases, files cannot be added after a release is published. Delete release $tag and tag $tag on the website, then run this workflow by hand with 'Publish a release' ticked."
+              echo "::error::Could not attach $FILE to the existing release $tag (see the message above). If the repository uses immutable releases, files cannot be added after a release is published. Increase 'version' in addon/manifest.ini and run this workflow by hand with 'Publish a release' ticked."
               exit 1
             fi
           else
@@ -112,3 +117,6 @@ jobs:
               --title "Add-on Store Sort Memory $VERSION" --notes-file notes.md
             echo "Created release $tag with $FILE." >> "$GITHUB_STEP_SUMMARY"
           fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "For the Add-on Store submission use: https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$FILE" >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: $SHA256" >> "$GITHUB_STEP_SUMMARY"
